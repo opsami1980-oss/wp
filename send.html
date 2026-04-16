@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html dir="rtl">
+<head>
+    <meta charset="utf-8">
+    <title>تجربة إرسال ميساج - واتساب</title>
+    <style>
+        body { font-family: Arial; text-align: center; background: #f4f4f4; padding: 50px; }
+        .box { background: white; padding: 30px; border-radius: 15px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); display: inline-block; width: 350px; }
+        input, textarea { width: 90%; padding: 10px; margin: 10px 0; border: 1px solid #ddd; border-radius: 5px; }
+        button { background: #25D366; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; font-size: 16px; }
+        button:hover { background: #128C7E; }
+        #response { margin-top: 20px; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <div class="box">
+        <h2 style="color: #2c3e50;">إرسال رسالة تجريبية 📩</h2>
+        
+        <input type="text" id="phone" placeholder="رقم الهاتف (مثلا: 213661000000)">
+        <textarea id="message" rows="4" placeholder="اكتب الميساج هنا..."></textarea>
+        
+        <button onclick="sendMessage()">إرسال الآن 🚀</button>
+        
+        <div id="response"></div>
+    </div>
+
+    <script>
+        async function sendMessage() {
+            const phone = document.getElementById('phone').value;
+            const message = document.getElementById('message').value;
+            const resDiv = document.getElementById('response');
+
+            if(!phone || !message) {
+                resDiv.style.color = "red";
+                resDiv.innerText = "تعيش شريكي، عمر الرقم والميساج!";
+                return;
+            }
+
+            resDiv.style.color = "blue";
+            resDiv.innerText = "جاري الإرسال... ⏳";
+
+            try {
+                const response = await fetch('https://nadinbot-api.onrender.com/api/send', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ phone, message })
+                });
+
+                const result = await response.json();
+
+                if(result.success) {
+                    resDiv.style.color = "green";
+                    resDiv.innerText = "✅ " + result.msg;
+                } else {
+                    resDiv.style.color = "red";
+                    resDiv.innerText = "❌ فشل: " + result.msg;
+                }
+            } catch (error) {
+                resDiv.style.color = "red";
+                resDiv.innerText = "❌ كاين مشكل في الاتصال بالسيرفر.";
+            }
+        }
+    </script>
+</body>
+</html>

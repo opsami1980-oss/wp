@@ -1,171 +1,101 @@
+const {
+    default: makeWASocket,
+    useMultiFileAuthState,
+    fetchLatestBaileysVersion,
+    DisconnectReason
+} = require('@whiskeysockets/baileys');
 const http = require('http');
-const https = require('https');
+const url = require('url');
 const fs = require('fs');
-const path = require('path');
-const dns = require('dns');
 
-// 🌟 السحر لي يحل مشكل التعليق في cPanel (إجبار السيرفر على استخدام IPv4)
-dns.setDefaultResultOrder('ipv4first');
+const sessions = new Map();
+const API_KEY = "Sami_Secure_Key_2026_!@#"; // نفس المفتاح اللي في PHP
 
-// إضافة fetchLatestBaileysVersion لمعرفة إصدار الواتساب
-const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion } = require('@whiskeysockets/baileys');
-const pino = require('pino');
-const qrcode = require('qrcode');
+async function getSession(userId) {
+    if (sessions.has(userId)) return sessions.get(userId);
 
-let globalQR = "";
-let globalStatus = "في انتظار الإقلاع...";
-let globalLogs = [];
-let globalSock; // 🌟 هادي لي زدناها
+    const sessionPath = `./auth_info/user_${userId}`;
+    const { state, saveCreds } = await useMultiFileAuthState(sessionPath);
+    const { version } = await fetchLatestBaileysVersion();
 
-function addLog(msg) {
-    let time = new Date().toLocaleTimeString();
-    console.log(`[${time}] ${msg}`);
-    globalLogs.push(`[${time}] ${msg}`);
-    if(globalLogs.length > 20) globalLogs.shift();
+    const sock = makeWASocket({
+        version,
+        auth: state,
+        printQRInTerminal: false,
+        browser: ["NadineBot", "Chrome", "1.0.0"]
+    });
+
+    const sessionData = {
+        sock,
+        qr: "",
+        status: "جاري الاتصال... ⏳",
+        userId
+    };
+
+    sessions.set(userId, sessionData);
+
+    sock.ev.on('connection.update', (update) => {
+        const { connection, lastDisconnect, qr } = update;
+        if (qr) {
+            sessionData.qr = qr;
+            sessionData.status = "يجب المسح الضوئي (QR)";
+        }
+        if (connection === 'open') {
+            sessionData.status = "متصل ✅";
+            sessionData.qr = "connected";
+        }
+        if (connection === 'close') {
+            const shouldReconnect = (lastDisconnect.error)?.output?.statusCode !== DisconnectReason.loggedOut;
+            if (shouldReconnect) {
+                getSession(userId);
+            } else {
+                sessionData.status = "غير متصل (تم تسجيل الخروج)";
+                sessions.delete(userId);
+                if (fs.existsSync(sessionPath)) fs.rmSync(sessionPath, { recursive: true });
+            }
+        }
+    });
+
+    sock.ev.on('creds.update', saveCreds);
+    return sessionData;
 }
 
-process.on('uncaughtException', err => addLog('🚨 كراش: ' + err.message));
-process.on('unhandledRejection', err => addLog('🚨 رفض: ' + err));
-
-const authPath = path.join(__dirname, 'auth_info');
-
-async function connectToWhatsApp() {
-    try {
-        addLog("📂 جاري تحضير ملفات الذاكرة...");
-        const { state, saveCreds } = await useMultiFileAuthState(authPath);
-        addLog("✅ الذاكرة جاهزة!");
-
-        const { version } = await fetchLatestBaileysVersion();
-        addLog(`📱 إصدار واتساب الحالي: ${version.join('.')}`);
-
-        const sock = makeWASocket({
-            version, // إرسال الإصدار الصحيح
-            auth: state,
-            printQRInTerminal: false,
-            logger: pino({ level: "silent" }),
-            browser: ["AlfaNadin", "Chrome", "1.0.0"],
-            connectTimeoutMs: 60000,
-            
-            // 🌟 الضربة القاضية لتخفيف استهلاك الرام في الاستضافات المشتركة 🌟
-            syncFullHistory: false, 
-            generateHighQualityLinkPreview: false,
-            markOnlineOnConnect: false
-        });
-        globalSock = sock;
-        sock.ev.on('connection.update', async (update) => {
-            const { connection, lastDisconnect, qr } = update;
-
-            if (connection === 'connecting') {
-                addLog("⏳ جاري الاتصال بسيرفرات واتساب (WebSocket)...");
-            }
-
-            if (qr) {
-                addLog("🔄 واتساب وافق! جاري رسم الكود...");
-                qrcode.toDataURL(qr, (err, url) => {
-                    if (!err) {
-                        globalQR = url;
-                        addLog("✅ الصورة واجدة! سكانيني ضرك.");
-                    }
-                });
-            }
-
-            if (connection === 'close') {
-                const errorMsg = lastDisconnect?.error?.message || "بدون سبب";
-                addLog("❌ تم قطع الاتصال: " + errorMsg);
-                
-                const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
-                if (shouldReconnect) {
-                    addLog("جاري محاولة إعادة الاتصال...");
-                    setTimeout(connectToWhatsApp, 3000);
-                }
-            } else if (connection === 'open') {
-                globalStatus = "متصل ومستعد للعمل! ✅";
-                globalQR = "connected";
-                addLog("🎉 مبروك! تم الاتصال بنجاح!");
-            }
-        });
-
-        sock.ev.on('creds.update', saveCreds);
-
-    } catch (error) {
-        addLog("🚨 خطأ: " + error.message);
-    }
-}
-
-// 🌟 فحص الأنترنت تاع السيرفر (باش نعرفو إذا الاستضافة راهي مبلوكياتنا)
-addLog("📡 جاري فحص اتصال السيرفر بالأنترنت الخارجية...");
-https.get('https://www.google.com', (res) => {
-    if(res.statusCode === 200) {
-        addLog("🌍 اختبار الأنترنت: نجاح! السيرفر متصل بالعالم الخارجي.");
-    }
-}).on('error', (e) => {
-    addLog("🚫 كارثة: الاستضافة قاطعة الأنترنت على Node.js (Firewall)!");
-    addLog("تفاصيل القطع: " + e.message);
-});
-
-const server = http.createServer((req, res) => {
-    // 🌟 إعدادات CORS باش المنصة تاعك تقدر تتصل بيه بلا مشاكل
+const server = http.createServer(async (req, res) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'OPTIONS, GET, POST');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-
-    // الرد السريع على طلبات المتصفح المسبقة
-    if (req.method === 'OPTIONS') {
-        res.writeHead(204);
-        res.end();
-        return;
-    }
-
     res.setHeader('Content-Type', 'application/json; charset=utf-8');
 
-    // 🌟 مسار قراءة الحالة (القديم)
-    if (req.method === 'GET' && req.url === '/api/status') {
-        res.writeHead(200);
-        res.end(JSON.stringify({ 
-            status: globalStatus, 
-            qr: globalQR, 
-            logs: globalLogs.slice(-5) 
-        }));
-        return;
+    const parsedUrl = url.parse(req.url, true);
+    const userId = parsedUrl.query.user_id;
+
+    if (req.method === 'GET' && parsedUrl.pathname === '/api/status') {
+        if (!userId) return res.end(JSON.stringify({ error: "user_id مطلوب" }));
+        const session = await getSession(userId);
+        return res.end(JSON.stringify({ status: session.status, qr: session.qr }));
     }
 
-    // 🌟 مسار إرسال الرسائل (الجديد)
-    if (req.method === 'POST' && req.url === '/api/send') {
+    if (req.method === 'POST' && parsedUrl.pathname === '/api/send') {
         let body = '';
         req.on('data', chunk => { body += chunk.toString(); });
         req.on('end', async () => {
             try {
                 const data = JSON.parse(body);
-                // واتساب يحتاج الرقم يكون بالصيغة الدولية وبلا + مع لاحقة خاصة
-                const phone = data.phone + "@s.whatsapp.net"; 
-                const message = data.message;
+                if (data.api_key !== API_KEY) return res.end(JSON.stringify({ success: false, msg: "خطأ في مفتاح الحماية" }));
+                
+                const session = await getSession(data.user_id);
+                if (session.status !== "متصل ✅") return res.end(JSON.stringify({ success: false, msg: "الواتساب غير متصل لهذا التاجر" }));
 
-                if (globalSock) {
-                    await globalSock.sendMessage(phone, { text: message });
-                    addLog(`📤 تم إرسال رسالة إلى ${data.phone}`);
-                    res.writeHead(200);
-                    res.end(JSON.stringify({ success: true, msg: "تم الإرسال بنجاح! 🚀" }));
-                } else {
-                    res.writeHead(500);
-                    res.end(JSON.stringify({ success: false, msg: "البوت غير متصل بالواتساب." }));
-                }
-            } catch (error) {
-                addLog(`❌ خطأ في الإرسال: ${error.message}`);
-                res.writeHead(500);
-                res.end(JSON.stringify({ success: false, error: error.message }));
+                const phone = data.phone + "@s.whatsapp.net";
+                await session.sock.sendMessage(phone, { text: data.message });
+                res.end(JSON.stringify({ success: true, msg: "تم الإرسال بنجاح! 🚀" }));
+            } catch (e) {
+                res.end(JSON.stringify({ success: false, error: e.message }));
             }
         });
         return;
     }
 
-    // رسالة افتراضية
-    res.writeHead(200);
-    res.end(JSON.stringify({ message: "سيرفر واتساب يعمل بنجاح! 🚀" }));
+    res.end(JSON.stringify({ message: "سيرفر نادين بوت SaaS يعمل! 🚀" }));
 });
 
-connectToWhatsApp();
-
-const port = process.env.PORT || 3000;
-server.listen(port, () => {
-    addLog(`🌐 سيرفر الويب شغال...`);
-});
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => console.log(`Server is running on port ${PORT}`));
