@@ -10,7 +10,7 @@ const sessions = new Map();
 
 // إعدادات الداتا بيس (خليها كيما درتها أنت)
 const dbConfig = {
-    host: 'localhost', 
+    host: '87.98.160.37', 
     user: 'xxpuayvw_sms',
     password: 'Sami1980H',
     database: 'xxpuayvw_sms'
