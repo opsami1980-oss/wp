@@ -3,24 +3,24 @@ const http = require('http');
 const url = require('url');
 const mysql = require('mysql2/promise');
 const fs = require('fs');
-const QRCode = require('qrcode'); // 👈 زدنا هاد المكتبة
+const QRCode = require('qrcode');
 
-const API_KEY = "Sami_Secure_Key_2026_!@#";  87.98.160.37
+const API_KEY = "Sami_Secure_Key_2026_!@#";
 const sessions = new Map();
 
-// إعدادات الداتا بيس (خليها كيما درتها أنت)
+// 💡 المعلومات اللي جربناهم في HeidiSQL ونجحوا
 const dbConfig = {
     host: '87.98.160.37', 
     user: 'xxpuayvw_sms',
     password: 'Sami1980H',
-    database: 'xxpuayvw_sms'
+    database: 'xxpuayvw_sms',
+    connectTimeout: 20000 // زدنا الوقت باش ما يزربش يفشل
 };
 
 const pool = mysql.createPool(dbConfig);
 
 async function getSession(userId) {
     if (sessions.has(userId)) return sessions.get(userId);
-
     const sessionPath = `./auth_info/user_${userId}`;
     
     try {
@@ -34,7 +34,12 @@ async function getSession(userId) {
     const { state, saveCreds } = await useMultiFileAuthState(sessionPath);
     const { version } = await fetchLatestBaileysVersion();
 
-    const sock = makeWASocket({ version, auth: state, printQRInTerminal: false });
+    const sock = makeWASocket({ 
+        version, 
+        auth: state, 
+        printQRInTerminal: false,
+        browser: ["NadineBot SaaS", "Chrome", "1.0.0"]
+    });
 
     const sessionData = { sock, qr: "", status: "جاري الاتصال... ⏳" };
     sessions.set(userId, sessionData);
@@ -42,7 +47,6 @@ async function getSession(userId) {
     sock.ev.on('connection.update', async (update) => {
         const { connection, lastDisconnect, qr } = update;
         if (qr) {
-            // 👈 السحر هنا: نحولو النص إلى صورة Base64 ديريكت
             sessionData.qr = await QRCode.toDataURL(qr);
             sessionData.status = "يجب المسح الضوئي (QR)";
         }
@@ -62,8 +66,10 @@ async function getSession(userId) {
 
     sock.ev.on('creds.update', async () => {
         await saveCreds();
-        const creds = fs.readFileSync(`${sessionPath}/creds.json`, 'utf-8');
-        await pool.execute('INSERT INTO whatsapp_sessions (user_id, data) VALUES (?, ?) ON DUPLICATE KEY UPDATE data = ?', [userId, creds, creds]);
+        try {
+            const creds = fs.readFileSync(`${sessionPath}/creds.json`, 'utf-8');
+            await pool.execute('INSERT INTO whatsapp_sessions (user_id, data) VALUES (?, ?) ON DUPLICATE KEY UPDATE data = ?', [userId, creds, creds]);
+        } catch (e) { console.log("DB Save Error:", e.message); }
     });
 
     return sessionData;
@@ -84,15 +90,17 @@ const server = http.createServer(async (req, res) => {
         let body = '';
         req.on('data', chunk => { body += chunk.toString(); });
         req.on('end', async () => {
-            const data = JSON.parse(body);
-            if (data.api_key !== API_KEY) return res.end(JSON.stringify({ success: false }));
-            const session = await getSession(data.user_id);
-            await session.sock.sendMessage(data.phone + "@s.whatsapp.net", { text: data.message });
-            res.end(JSON.stringify({ success: true }));
+            try {
+                const data = JSON.parse(body);
+                if (data.api_key !== API_KEY) return res.end(JSON.stringify({ success: false }));
+                const session = await getSession(data.user_id);
+                await session.sock.sendMessage(data.phone + "@s.whatsapp.net", { text: data.message });
+                res.end(JSON.stringify({ success: true }));
+            } catch (e) { res.end(JSON.stringify({ success: false, error: e.message })); }
         });
         return;
     }
-    res.end(JSON.stringify({ message: "Nadine SaaS Active 🚀" }));
+    res.end(JSON.stringify({ message: "Nadine SaaS Live! 🚀" }));
 });
 
 server.listen(process.env.PORT || 3000);
