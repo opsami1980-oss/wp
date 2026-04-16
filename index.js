@@ -5,12 +5,12 @@ const mysql = require('mysql2/promise');
 const fs = require('fs');
 const QRCode = require('qrcode'); // 👈 زدنا هاد المكتبة
 
-const API_KEY = "Sami_Secure_Key_2026_!@#";
+const API_KEY = "Sami_Secure_Key_2026_!@#";  87.98.160.37
 const sessions = new Map();
 
 // إعدادات الداتا بيس (خليها كيما درتها أنت)
 const dbConfig = {
-    host: 'Shared_IP_تاعك', 
+    host: '87.98.160.37', 
     user: 'xxpuayvw_sms',
     password: 'Sami1980H',
     database: 'xxpuayvw_sms'
