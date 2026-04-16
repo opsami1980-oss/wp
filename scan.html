@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html dir="rtl">
+<head>
+    <meta charset="utf-8">
+    <title>ربط واتساب - المنصة</title>
+    <style>
+        body { font-family: Arial; text-align: center; background: #f4f4f4; padding: 50px; }
+        .box { background: white; padding: 30px; border-radius: 15px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); display: inline-block; }
+    </style>
+</head>
+<body>
+    <div class="box">
+        <h2 style="color: #2c3e50;">سكانيني باش نربط الواتساب 📱</h2>
+        <div id="qr-container">
+            <p style="color: #e67e22;">⏳ جاري الاتصال بالسيرفر...</p>
+        </div>
+        <h4 id="status-text" style="color: blue;"></h4>
+    </div>
+
+    <script>
+        // هذي هي التعليمة اللي تجيب الكود من Render لي درناه
+        fetch('https://nadinbot-api.onrender.com/api/status')
+            .then(response => response.json())
+            .then(data => {
+                document.getElementById('status-text').innerText = data.status;
+                
+                if (data.qr && data.qr.startsWith('data:image')) {
+                    // هنا نرسمو الصورة
+                    document.getElementById('qr-container').innerHTML = 
+                        `<img src="${data.qr}" style="border: 3px solid #4CAF50; padding: 10px; border-radius: 10px; width: 250px;" />`;
+                } else if (data.qr === 'connected') {
+                    document.getElementById('qr-container').innerHTML = 
+                        `<h3 style="color: green;">✅ مبروك! الواتساب تاعك راهو مربوط بالمنصة.</h3>`;
+                }
+            })
+            .catch(err => {
+                document.getElementById('qr-container').innerHTML = `<p style="color: red;">❌ كاين مشكل في الاتصال</p>`;
+            });
+    </script>
+</body>
+</html>

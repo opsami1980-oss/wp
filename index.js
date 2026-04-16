@@ -15,6 +15,7 @@ const qrcode = require('qrcode');
 let globalQR = "";
 let globalStatus = "في انتظار الإقلاع...";
 let globalLogs = [];
+let globalSock; // 🌟 هادي لي زدناها
 
 function addLog(msg) {
     let time = new Date().toLocaleTimeString();
@@ -50,7 +51,7 @@ async function connectToWhatsApp() {
             generateHighQualityLinkPreview: false,
             markOnlineOnConnect: false
         });
-
+        globalSock = sock;
         sock.ev.on('connection.update', async (update) => {
             const { connection, lastDisconnect, qr } = update;
 
@@ -102,29 +103,64 @@ https.get('https://www.google.com', (res) => {
     addLog("تفاصيل القطع: " + e.message);
 });
 
-// سيرفر الويب
 const server = http.createServer((req, res) => {
-    res.writeHead(200, {'Content-Type': 'text/html; charset=utf-8'});
-    res.write(`<html dir="rtl"><body style="font-family: Arial; padding: 20px; background: #f4f4f4;">`);
-    res.write(`<div style="background: white; padding: 20px; border-radius: 10px; box-shadow: 0 0 10px rgba(0,0,0,0.1);">`);
-    res.write(`<h2 style="color: #2c3e50;">شاشة مراقبة واتساب 📡</h2>`);
-    res.write(`<h3>الحالة: <span style="color: blue;">${globalStatus}</span></h3>`);
-    
-    if (globalQR && globalQR.startsWith('data:image')) { 
-         res.write(`<div style="text-align: center; margin: 20px;">`);
-         res.write(`<h4>سكانيني ضرك! (عندك 20 ثانية) 📱</h4>`);
-         res.write(`<img src="${globalQR}" style="border: 3px solid #4CAF50; padding: 10px; border-radius: 10px;" />`);
-         res.write(`</div>`);
-    } else if (globalQR === "connected") {
-         res.write(`<h4 style="color: green; text-align: center;">✅ البوت متصل بنجاح.</h4>`);
-    } else {
-         res.write(`<p style="color: #d35400;"><b>الرسالة:</b> جاري التحضير...</p>`);
+    // 🌟 إعدادات CORS باش المنصة تاعك تقدر تتصل بيه بلا مشاكل
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'OPTIONS, GET, POST');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+    // الرد السريع على طلبات المتصفح المسبقة
+    if (req.method === 'OPTIONS') {
+        res.writeHead(204);
+        res.end();
+        return;
     }
-    
-    res.write(`<hr><h3>سجل الأحداث (Logs):</h3><ul style="color: #555; background: #e8eaed; padding: 15px; border-radius: 5px; list-style-type: none;">`);
-    globalLogs.forEach(log => res.write(`<li>${log}</li>`));
-    res.write(`</ul></div></body></html>`);
-    res.end();
+
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+
+    // 🌟 مسار قراءة الحالة (القديم)
+    if (req.method === 'GET' && req.url === '/api/status') {
+        res.writeHead(200);
+        res.end(JSON.stringify({ 
+            status: globalStatus, 
+            qr: globalQR, 
+            logs: globalLogs.slice(-5) 
+        }));
+        return;
+    }
+
+    // 🌟 مسار إرسال الرسائل (الجديد)
+    if (req.method === 'POST' && req.url === '/api/send') {
+        let body = '';
+        req.on('data', chunk => { body += chunk.toString(); });
+        req.on('end', async () => {
+            try {
+                const data = JSON.parse(body);
+                // واتساب يحتاج الرقم يكون بالصيغة الدولية وبلا + مع لاحقة خاصة
+                const phone = data.phone + "@s.whatsapp.net"; 
+                const message = data.message;
+
+                if (globalSock) {
+                    await globalSock.sendMessage(phone, { text: message });
+                    addLog(`📤 تم إرسال رسالة إلى ${data.phone}`);
+                    res.writeHead(200);
+                    res.end(JSON.stringify({ success: true, msg: "تم الإرسال بنجاح! 🚀" }));
+                } else {
+                    res.writeHead(500);
+                    res.end(JSON.stringify({ success: false, msg: "البوت غير متصل بالواتساب." }));
+                }
+            } catch (error) {
+                addLog(`❌ خطأ في الإرسال: ${error.message}`);
+                res.writeHead(500);
+                res.end(JSON.stringify({ success: false, error: error.message }));
+            }
+        });
+        return;
+    }
+
+    // رسالة افتراضية
+    res.writeHead(200);
+    res.end(JSON.stringify({ message: "سيرفر واتساب يعمل بنجاح! 🚀" }));
 });
 
 connectToWhatsApp();
