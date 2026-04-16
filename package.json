@@ -1,0 +1,15 @@
+{
+  "name": "nadinbot-wa-service",
+  "version": "1.0.0",
+  "description": "WhatsApp Automation for NadinBot",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "@whiskeysockets/baileys": "^6.5.0",
+    "axios": "^1.6.0",
+    "pino": "^8.16.0",
+    "qrcode": "^1.5.3"
+  }
+}
