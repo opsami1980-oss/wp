@@ -34,9 +34,8 @@ async function connectToWhatsApp() {
         const { state, saveCreds } = await useMultiFileAuthState(authPath);
         addLog("✅ الذاكرة جاهزة!");
 
-        // تجاوزنا فحص الإصدار من الأنترنت باش ما يتبلوكاش السيرفر
-        const version = [2, 3000, 1015901307]; 
-        addLog(`📱 إصدار واتساب (ثابت): ${version.join('.')}`);
+        const { version } = await fetchLatestBaileysVersion();
+        addLog(`📱 إصدار واتساب الحالي: ${version.join('.')}`);
 
         const sock = makeWASocket({
             version, // إرسال الإصدار الصحيح
