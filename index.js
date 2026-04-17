@@ -1,10 +1,89 @@
+const { default: makeWASocket, useMultiFileAuthState, fetchLatestBaileysVersion, DisconnectReason } = require('@whiskeysockets/baileys');
+const http = require('http');
+const url = require('url');
+const mysql = require('mysql2/promise');
+const fs = require('fs');
+const QRCode = require('qrcode');
+
+const API_KEY = "Sami_Secure_Key_2026_!@#";
+const sessions = new Map();
+
+// إعدادات الداتا بيس
+const dbConfig = {
+    host: '87.98.160.37', 
+    user: 'xxpuayvw_sms',
+    password: 'Sami1980H',
+    database: 'xxpuayvw_sms',
+    connectTimeout: 20000 
+};
+
+const pool = mysql.createPool(dbConfig);
+
+async function getSession(userId) {
+    if (sessions.has(userId)) return sessions.get(userId);
+    const sessionPath = `./auth_info/user_${userId}`;
+    
+    try {
+        const [rows] = await pool.execute('SELECT data FROM whatsapp_sessions WHERE user_id = ?', [userId]);
+        if (rows.length > 0) {
+            if (!fs.existsSync(sessionPath)) fs.mkdirSync(sessionPath, { recursive: true });
+            fs.writeFileSync(`${sessionPath}/creds.json`, rows[0].data);
+        }
+    } catch (e) { console.log("DB Read Error:", e.message); }
+
+    const { state, saveCreds } = await useMultiFileAuthState(sessionPath);
+    const { version } = await fetchLatestBaileysVersion();
+
+    const sock = makeWASocket({ 
+        version, 
+        auth: state, 
+        printQRInTerminal: false,
+        syncFullHistory: false,
+        markOnlineOnConnect: false,
+        browser: ["NadineBot SaaS", "Chrome", "1.0.0"]
+    });
+
+    const sessionData = { sock, qr: "", status: "جاري الاتصال... ⏳" };
+    sessions.set(userId, sessionData);
+
+    sock.ev.on('connection.update', async (update) => {
+        const { connection, lastDisconnect, qr } = update;
+        if (qr) {
+            sessionData.qr = await QRCode.toDataURL(qr);
+            sessionData.status = "يجب المسح الضوئي (QR)";
+        }
+        if (connection === 'open') {
+            sessionData.status = "متصل ✅";
+            sessionData.qr = "connected";
+            console.log(`User ${userId} successfully connected!`);
+        }
+        if (connection === 'close') {
+            const shouldReconnect = (lastDisconnect.error)?.output?.statusCode !== DisconnectReason.loggedOut;
+            if (shouldReconnect) getSession(userId);
+            else {
+                sessions.delete(userId);
+                pool.execute('DELETE FROM whatsapp_sessions WHERE user_id = ?', [userId]).catch(()=>{});
+            }
+        }
+    });
+
+    sock.ev.on('creds.update', async () => {
+        await saveCreds();
+        fs.promises.readFile(`${sessionPath}/creds.json`, 'utf-8').then(creds => {
+            pool.execute('INSERT INTO whatsapp_sessions (user_id, data) VALUES (?, ?) ON DUPLICATE KEY UPDATE data = ?', [userId, creds, creds])
+                .catch(e => console.log("DB Background Save Error:", e.message));
+        }).catch(()=>{});
+    });
+
+    return sessionData;
+}
+
 const server = http.createServer(async (req, res) => {
-    // 🛑 كاسحة الجليد (CORS Bypass) - هادو 4 سطور هما الصح
+    // 🛑 تصريح المرور للمتصفح (CORS)
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
-    // إذا المتصفح بعث طلب استكشاف (OPTIONS)، نجاوبوه باللي الطريق مسموح تم تم
     if (req.method === 'OPTIONS') {
         res.writeHead(200);
         return res.end();
@@ -33,7 +112,7 @@ const server = http.createServer(async (req, res) => {
         });
         return;
     }
-    res.end(JSON.stringify({ message: "Nadine SaaS Fast Sync! 🚀" }));
+    res.end(JSON.stringify({ message: "Nadine SaaS Live! 🚀" }));
 });
 
 server.listen(process.env.PORT || 3000);
