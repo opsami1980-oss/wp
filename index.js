@@ -38,9 +38,11 @@ async function getSession(userId) {
         version, 
         auth: state, 
         printQRInTerminal: false,
-        syncFullHistory: false,
+        syncFullHistory: false, // منع تحميل التاريخ باش يزرب
         markOnlineOnConnect: false,
-        browser: ["NadineBot SaaS", "Chrome", "1.0.0"]
+        generateHighQualityLinkPreview: false, // توقيف معاينة الروابط لتخفيف الضغط
+        browser: ["Windows", "Chrome", "120.0.0"], // التخفي كمتصفح ويندوز عادي
+        getMessage: async (key) => { return { conversation: 'NadinBot' }; } // منع الكراش إذا جات رسالة أثناء الربط
     });
 
     const sessionData = { sock, qr: "", status: "جاري الاتصال... ⏳" };
