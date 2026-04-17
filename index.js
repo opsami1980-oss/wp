@@ -8,13 +8,13 @@ const QRCode = require('qrcode');
 const API_KEY = "Sami_Secure_Key_2026_!@#";
 const sessions = new Map();
 
-// 💡 المعلومات اللي جربناهم في HeidiSQL ونجحوا
+// إعدادات أوكتينيوم
 const dbConfig = {
     host: '87.98.160.37', 
     user: 'xxpuayvw_sms',
     password: 'Sami1980H',
     database: 'xxpuayvw_sms',
-    connectTimeout: 20000 // زدنا الوقت باش ما يزربش يفشل
+    connectTimeout: 20000 
 };
 
 const pool = mysql.createPool(dbConfig);
@@ -38,6 +38,8 @@ async function getSession(userId) {
         version, 
         auth: state, 
         printQRInTerminal: false,
+        syncFullHistory: false, // 👈 هادي تخفف الاتصال الأول بزاف
+        markOnlineOnConnect: false,
         browser: ["NadineBot SaaS", "Chrome", "1.0.0"]
     });
 
@@ -53,23 +55,25 @@ async function getSession(userId) {
         if (connection === 'open') {
             sessionData.status = "متصل ✅";
             sessionData.qr = "connected";
+            console.log(`User ${userId} successfully connected!`);
         }
         if (connection === 'close') {
             const shouldReconnect = (lastDisconnect.error)?.output?.statusCode !== DisconnectReason.loggedOut;
             if (shouldReconnect) getSession(userId);
             else {
                 sessions.delete(userId);
-                await pool.execute('DELETE FROM whatsapp_sessions WHERE user_id = ?', [userId]);
+                pool.execute('DELETE FROM whatsapp_sessions WHERE user_id = ?', [userId]).catch(()=>{});
             }
         }
     });
 
+    // 👈 السحر هنا: خبينا الحفظ في الداتا بيس يخدم وحدو في الخلفية بلا ما يبلوكي الاتصال
     sock.ev.on('creds.update', async () => {
-        await saveCreds();
-        try {
-            const creds = fs.readFileSync(`${sessionPath}/creds.json`, 'utf-8');
-            await pool.execute('INSERT INTO whatsapp_sessions (user_id, data) VALUES (?, ?) ON DUPLICATE KEY UPDATE data = ?', [userId, creds, creds]);
-        } catch (e) { console.log("DB Save Error:", e.message); }
+        await saveCreds(); // حفظ محلي سريع باش التليفون ما يفشلش
+        fs.promises.readFile(`${sessionPath}/creds.json`, 'utf-8').then(creds => {
+            pool.execute('INSERT INTO whatsapp_sessions (user_id, data) VALUES (?, ?) ON DUPLICATE KEY UPDATE data = ?', [userId, creds, creds])
+                .catch(e => console.log("DB Background Save Error:", e.message));
+        }).catch(()=>{});
     });
 
     return sessionData;
@@ -100,7 +104,7 @@ const server = http.createServer(async (req, res) => {
         });
         return;
     }
-    res.end(JSON.stringify({ message: "Nadine SaaS Live! 🚀" }));
+    res.end(JSON.stringify({ message: "Nadine SaaS Fast Sync! 🚀" }));
 });
 
 server.listen(process.env.PORT || 3000);
